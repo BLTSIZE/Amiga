@@ -1,0 +1,71 @@
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+</head>
+<table>
+	<tr>
+		<td>X:</td>
+		<td><input type="text" size="3" value="129" id="tagX"/></td>
+	</tr>
+	<tr>
+		<td>Y:</td>
+		<td><input type="text" size="3" value="44" id="tagY"/></td>
+	</tr>
+	<tr>
+		<td>DY:</td>
+		<td><input type="text" size="3" value="16" id="tagDY"/></td>
+	</tr>
+	<tr>
+		<td>CW1:</td>
+		<td id="tagCW1"/></td>
+	</tr>
+	<tr>
+		<td>CW2:</td>
+		<td id="tagCW2"/></td>
+	</tr>
+</table>
+<input type="button" value="Compute control words" onclick="compute ()"/>
+<body>
+<script>
+function compute () {
+	var x, y, dy, cw1, cw2;
+	x = parseInt (document.getElementById ("tagX").value) - 1;
+	y = parseInt (document.getElementById ("tagY").value);
+	dy = parseInt (document.getElementById ("tagDY").value);
+	cw1 = ((y & 0xFF) << 8) | ((x & 0x1FE) >>> 1);
+	cw2 = (((y + dy) & 0xFF) << 8) | ((y & 0x100) >>> 6) | (((y + dy) & 0x100) >>> 7) | (x & 0x1);
+	document.getElementById ("tagCW1").innerHTML = IntToHex (cw1, 16, false);
+	document.getElementById ("tagCW2").innerHTML = IntToHex (cw2, 16, false);
+}
+
+function IntToHex (w, size, signed) {
+	var min, max, s, prefix;
+
+	if (signed) {
+		min = - (1 << (size - 1));
+		max = (1 << (size - 1)) - 1;
+	}
+	else {
+		min = 0;
+		max = (1 << size) - 1;
+	}
+	if (w >= 0) {
+		if (w > max)
+			return ("TOO BIG");
+		prefix = "0";
+	}
+	else {
+		if (w < min)
+			return ("TOO SMALL");
+		prefix = "F";
+		w = (1 << size) + w;
+	}
+	s = w.toString (16);
+	while (s.length != (size >> 2))
+		s = prefix + s;
+	s = "$" + s;
+	return (s.toUpperCase ());
+}
+</script>
+</body>
+</html>

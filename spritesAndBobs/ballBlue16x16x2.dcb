@@ -1,0 +1,46 @@
+;Use WB with "start" as BEG and "end" as END to write binary file
+
+;RAWB bitmap of 16 x 16 pixels in 4 colors
+
+start:
+
+;Bitplanes
+
+	DC.B $07, $80
+	DC.B $07, $C0
+	DC.B $17, $40
+	DC.B $1F, $F0
+	DC.B $2E, $08
+	DC.B $3F, $F8
+	DC.B $5C, $A0
+	DC.B $7F, $DC
+	DC.B $6E, $10
+	DC.B $7F, $EC
+	DC.B $DD, $00
+	DC.B $FF, $FE
+	DC.B $6E, $4A
+	DC.B $FF, $FE
+	DC.B $EF, $00
+	DC.B $FF, $FE
+	DC.B $D6, $94
+	DC.B $FF, $FE
+	DC.B $B7, $A2
+	DC.B $FF, $FE
+	DC.B $77, $FC
+	DC.B $7F, $FC
+	DC.B $6A, $FC
+	DC.B $7F, $FC
+	DC.B $3D, $68
+	DC.B $3F, $F8
+	DC.B $17, $50
+	DC.B $1F, $F0
+	DC.B $05, $C0
+	DC.B $07, $C0
+	DC.B $00, $00
+	DC.B $00, $00
+
+;Palette of 4 colors
+
+	DC.W $0000, $0FFF, $054B, $043A
+
+end:
