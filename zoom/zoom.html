@@ -1,0 +1,337 @@
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+	<link type="text/css" rel="stylesheet" href="styles.css"/>
+</head>
+<body onload="run ()">
+<!-- Title (start) -->
+<div class="titleBar">
+<div class="titleTitle">Précalcul de dissimulation de lignes dans un zoom vertical hardware (v1)</div>
+<div class="titleCopyright">Codé par Denis Duplan pour Stash of Code (<a href="http://www.stashofcode.fr" target="_blank">http://www.stashofcode.fr</a>, <a href="mailto:stashofcode@gmail.com">stashofcode@gmail.com</a>) en 2017.</div>
+<div class="titleDescription">
+<div class="paragraph">
+Précalcul des indices des lignes à supprimer lors d'un zoom (tout l'enjeu est déterminer un ordre qui ne paraît pas aberrant au spectateur).
+</div>
+<div class="paragraph">
+Dans le zoom horizontal, on ne peut supprimer que le dernier pixel d'un groupe de 16 pixels. Au départ, l'image fait 20 groupes (306/16, l'image la plus large ne pouvant faire que 306 pixels de large en raison d'une contrainte résultant de la technique du décalage à droite et de la nécessité de centrer l'image horizontalement) : on la réduit ainsi à 306-15=291 pixels en veillant à chaque étape à la recentrer horizontalement à l'écran. Puis on recommence avec ce qu'il reste de groupes (291/16 = 19 groupes)... et ainsi de suite jusqu'à ce que la largeur de l'image étant passée sous celle d'un groupe (ie : ayant atteint 15 pixels), il ne soit plus possible de supprimer de pixels. A chaque passe, il n'est donc possible de supprimer que 15 pixels parmi tous ceux possibles (20 ou moins), et l'ordre dans lequel il sont supprimés a été déterminé empiriquement : partir du pixel du groupe le plus central occupé par ce qu'il reste de l'image, et s'en éloigner en oscillant autour de groupe en groupe. C'est ce procédé qui est reproduit ici pour le zoom vertical.
+</div>
+<div class="paragraph">
+Pour utiliser l'outil, sélectionner une image <span style="font-weight:bold;color:red">dans le répertoire du fichier HTML (les contraintes de sécurité du navigateur interdisent de charger un fichier depuis un autre emplacement)</span> et cliquer sur "Zoom!". Utiliser alors les boutons de la barre de contrôle sous l'image "Output" pour tester le zoom vertical.
+</div>
+</div>
+</div>
+<!-- Title (end) -->
+<div>
+<table>
+	<tr>
+		<td style="font-weight:bold">
+Bitmap :
+		</td>
+		<td>
+<input type="file" id="tagFile" onchange="loadPNG ()"/>
+		</td>
+	</tr>
+	<tr>
+		<td style="font-weight:bold">
+Strip height :
+		</td>
+		<td>
+<input type="text" size="4" id="tagStripHeight" value="16"/>
+		</td>
+	</tr>
+	<tr>
+		<td colspan="2">
+<input id="tagZoom" type="button" value="Zoom!" onclick="zoom ()" disabled="true"/>
+		</td>
+	</tr>
+</table>
+</div>
+<div>
+<table style="width:100%" cellpadding="2px" cellspacing="0" border="1" style="border-collapse:collapse">
+	<tr style="background-color:gainsboro">
+		<td style="width:50%;text-align:center">Input</td>
+		<td style="width:50%;text-align:center">Output</td>
+	</tr>
+	<tr>
+		<td style="width:50%;text-align:center"><canvas id="tagInput"/></td>
+		<td style="width:50%;text-align:center"><canvas id="tagOutput"/></td>
+	</tr>
+	<tr>
+		<td></td>
+		<td style="text-align:center">
+<table style="width:100%" cellpadding="2px" cellspacing="0" border="0" style="border-collapse:collapse">
+	<tr>
+		<td style="text-align:center"><input id="tagPlay" type="button" value="Play" onclick="zoomPlay ()" disabled="true"/></td>
+		<td style="text-align:center"><input id="tagStop" type="button" value="Stop" onclick="zoomStop ()" disabled="true"/></td>
+		<td style="text-align:center"><input id="tagRewind" type="button" value="Rewind" onclick="zoomRewind ()" disabled="true"/></td>
+		<td style="text-align:center"><input id="tagPrevious" type="button" value="Previous" onclick="zoomPrevious ()" disabled="true"/></td>
+		<td style="text-align:center"><input id="tagNext" type="button" value="Next" onclick="zoomNext ()" disabled="true"/></td>
+	</tr>
+</table>
+		</td>
+	</tr>
+</table>
+</div>
+<div class="paragraph">
+<textarea id="tagData" class="code" rows="10" style="width:100%"></textarea></td>
+</div>
+<script>
+function loadPNG () {
+	document.getElementById ("tagPlay").disabled = true;
+	document.getElementById ("tagPrevious").disabled = true;
+	document.getElementById ("tagNext").disabled = true;
+	document.getElementById ("tagStop").disabled = true;
+	document.getElementById ("tagRewind").disabled = true;
+	document.getElementById ("tagZoom").disabled = true;
+	g.img.src = document.getElementById ("tagFile").value.replace (/.*?fakepath./gi, "");
+}
+
+function onLoaded (e) {
+	g.width = g.img.width;
+	g.height = g.img.height;
+	g.inputTag.setAttribute ("width", g.width);
+	g.inputTag.setAttribute ("height", g.height);
+	g.outputTag.setAttribute ("width", g.width);
+	g.outputTag.setAttribute ("height", g.height);
+	document.getElementById ("tagZoom").disabled = false;
+}
+
+function zoomReset () {
+	g.deletedLines = 0;
+	document.getElementById ("tagPlay").disabled = false;
+	document.getElementById ("tagStop").disabled = true;
+	document.getElementById ("tagPrevious").disabled = true;
+	document.getElementById ("tagNext").disabled = false;
+	document.getElementById ("tagRewind").disabled = true;
+	g.inputContext.drawImage (g.img, 0, 0);
+	g.outputContext.drawImage (g.img, 0, 0);
+}
+
+function zoom () {
+	var html, i, j, nbStrips, strips, strip, height, nextHeight, offset, lines;
+
+	// Créer une liste des indices des bandes partant de la plus centrale et s'en éloignant alternativement vers le haut et vers le bas (commençant par vers le bas)
+	
+	g.stripHeight = parseInt (document.getElementById ("tagStripHeight").value);
+	if (g.stripHeight > g.height) {
+		alert ("This won't work, because strip height (" + g.stripHeight + ") is greater that image height (" + g.height + ") !");
+		return;
+	}
+	strips = new Array ();
+	nbStrips = Math.ceil (g.height / g.stripHeight); // Hauteur (en # bandes) de l'écran dans lequel l'image serait centrée verticalement au départ
+	j = -1;
+	strip = (nbStrips - 1) >>> 1;
+	for (i = 0; i !== nbStrips; i ++) {
+		strip += i * j;
+		strips.push (strip);
+		j = -j;
+	}
+
+	// Créer une liste des indices des lignes à supprimer. Il s'agit de marquer pour suppression la dernière ligne de la bande courante, de recentrer l'image verticalement après y avoir supprimé les lignes marquées, puis de passer à la bande suivante, en rebouclant sur la première quand la dernière a été utilisée.
+
+	lines = new Array ();
+	for (i = 0; i !== g.height; i ++)
+		lines.push ({number:i, toDelete:false});
+	g.lines = new Array ();
+	height = g.height;
+	offset = (g.stripHeight * nbStrips - height) >>> 1; // Hauteur de la première ligne de l'image centrée verticalement dans l'écran composé de nbStrips bandes
+	nextHeight = height;
+	strip = 0;
+	while (true) {
+		i = (strips[strip] + 1) * g.stripHeight - 1 - offset;
+		if ((i >= 0) && (i < height)) {
+			g.lines.push (lines[i].number);
+			lines[i].toDelete = true;
+			nextHeight --;
+			if (nextHeight < g.stripHeight)
+				break;
+		}
+		strip ++;
+		if (strip === strips.length) {
+			i = 0;
+			j = height - nextHeight;
+			while (j !== 0) {
+				if (lines[i].toDelete) {
+					lines.splice (i, 1);
+					j --;
+				}
+				else
+					i ++;
+			}
+			height = nextHeight;
+			offset = (g.stripHeight * nbStrips - height) >>> 1;
+			strip = 0;
+		}
+	}
+
+	// Exporter le résultat
+
+	html = "DC.B ";
+	for (i = 0; i !== g.lines.length - 1; i ++)
+		html += g.lines[i] + ", ";
+	html += g.lines[i];
+	document.getElementById ("tagData").value = html;
+	zoomReset ();
+}
+
+function zoomDraw () {
+	var inputData, outputData, i, j, k, outByte, inByte, isDeleted;
+
+	g.outputContext.clearRect (0, 0, g.width, g.height);
+	k = 0;
+	inByte = 0;
+	outByte = (g.deletedLines >>> 1) * g.width * 4;
+	inputData = g.inputContext.getImageData (0, 0, g.width, g.height);
+	outputData = g.outputContext.createImageData (g.width, g.height);
+	for (j = 0; j !== g.height; j ++) {
+		isDeleted = false;
+		for (k = 0; k !== g.deletedLines; k ++) {
+			if (g.lines[k] === j) {
+				isDeleted = true;
+				break;
+			}
+		}
+		if (isDeleted) {
+			for (i = 0; i !== g.width; i ++) {
+				inputData.data[inByte ++] = 0xFF;
+				inputData.data[inByte ++] = 0xFF;
+				inputData.data[inByte ++] = 0xFF;
+				inputData.data[inByte ++] = 0xFF;
+			}
+		}
+		else {
+			for (i = 0; i !== g.width; i ++) {
+				outputData.data[outByte ++] = inputData.data[inByte ++];
+				outputData.data[outByte ++] = inputData.data[inByte ++];
+				outputData.data[outByte ++] = inputData.data[inByte ++];
+				outputData.data[outByte ++] = inputData.data[inByte ++];
+			}
+		}
+	}
+	g.inputContext.putImageData (inputData, 0, 0);
+	g.outputContext.putImageData (outputData, 0, 0);
+}
+
+function zoomRewind () {
+	g.deletedLines = 0;
+	document.getElementById ("tagNext").disabled = false;
+	document.getElementById ("tagPrevious").disabled = true;
+	document.getElementById ("tagRewind").disabled = true;
+	g.inputContext.drawImage (g.img, 0, 0);
+	g.outputContext.drawImage (g.img, 0, 0);
+}
+
+function zoomNext () {
+	g.deletedLines ++;
+	document.getElementById ("tagPrevious").disabled = false;
+	document.getElementById ("tagRewind").disabled = false;
+	if (g.deletedLines === (g.height - g.stripHeight))
+		document.getElementById ("tagNext").disabled = true;
+	zoomDraw ();
+}
+
+function zoomPrevious () {
+	g.deletedLines --;
+	g.inputContext.drawImage (g.img, 0, g.lines[g.deletedLines], g.width, 1, 0, g.lines[g.deletedLines], g.width, 1);
+	document.getElementById ("tagNext").disabled = false;
+	if (!g.deletedLines) {
+		document.getElementById ("tagPrevious").disabled = true;
+		document.getElementById ("tagRewind").disabled = true;
+	}
+	zoomDraw ();	
+}
+
+function zoomStep () {
+	g.animationFrame = requestAnimationFrame (zoomStep);
+	g.animationFrameCounter --;
+	if (g.animationFrameCounter)
+		return;
+	g.animationFrameCounter = g.animationFrameRate;
+	g.deletedLines ++;
+	zoomDraw ();
+	if (g.deletedLines === (g.height - g.stripHeight))
+		zoomStop ();
+}
+
+function zoomPlay () {
+	g.inputContext.drawImage (g.img, 0, 0);
+	document.getElementById ("tagFile").disabled = true;
+	document.getElementById ("tagPlay").disabled = true;
+	document.getElementById ("tagStop").disabled = false;
+	document.getElementById ("tagPrevious").disabled = true;
+	document.getElementById ("tagNext").disabled = true;
+	document.getElementById ("tagRewind").disabled = true;
+	g.deletedLines = 0;
+	zoomDraw ();
+	g.animationFrameCounter = 1;
+	g.animationFrame = requestAnimationFrame (zoomStep);	
+}
+
+function zoomStop () {
+	cancelAnimationFrame (g.animationFrame);
+	document.getElementById ("tagFile").disabled = false;
+	document.getElementById ("tagPlay").disabled = false;
+	document.getElementById ("tagStop").disabled = true;
+	if (g.deletedLines) {
+		document.getElementById ("tagPrevious").disabled = false;
+		document.getElementById ("tagRewind").disabled = false;
+		if (g.deletedLines !== (g.height - g.stripHeight))
+			document.getElementById ("tagNext").disabled = false;
+	}
+}
+
+function IntToHex (w, size, signed) {
+	var min, max, s, prefix;
+
+	if (signed) {
+		min = - (1 << (size - 1));
+		max = (1 << (size - 1)) - 1;
+	}
+	else {
+		min = 0;
+		max = (1 << size) - 1;
+	}
+	if (w >= 0) {
+		if (w > max)
+			return ("TOO BIG");
+		prefix = "0";
+	}
+	else {
+		if (w < min)
+			return ("TOO SMALL");
+		prefix = "F";
+		w = (1 << size) + w;
+	}
+	s = w.toString (16);
+	while (s.length !== (size >> 2))
+		s = prefix + s;
+	s = "$" + s;
+	return (s.toUpperCase ());
+}
+
+var g = {
+	inputTag:null,
+	inputContext:null,
+	outputTag:null,
+	outputContext:null,
+	img:null,
+	width:0,
+	height:0,
+	animationFrameCounter:0,
+	animationFrameRate:2,
+	lines:null,
+	stripHeight:0,
+	deletedLines:0
+};
+
+function run () {
+	g.inputTag = document.getElementById ("tagInput");
+	g.inputContext = g.inputTag.getContext ("2d");
+	g.outputTag = document.getElementById ("tagOutput");
+	g.outputContext = g.outputTag.getContext ("2d");
+	g.img = document.createElement ("img");
+	g.img.addEventListener ("load", onLoaded, false);
+}
+</script>
+</body>
+</html>
